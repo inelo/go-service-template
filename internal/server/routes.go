@@ -3,17 +3,17 @@ package server
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go-service-template/internal/app"
 	"net/http"
-	"passage-worker/internal/app"
 )
 
 func registerRoutes(router *gin.Engine, application *app.Application) {
 	// Docs link
-	//router.LoadHTMLGlob("docs/*.html")
-	//router.Static("/docs", "./docs")
-	//router.GET("/docs", func(c *gin.Context) {
-	//	c.HTML(http.StatusOK, "index.html", nil)
-	//})
+	router.LoadHTMLGlob("docs/*.html")
+	router.Static("/docs", "./docs")
+	router.GET("/docs", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", nil)
+	})
 
 	router.GET("/metrics", metricsHandler())
 	router.GET("/ping", func(c *gin.Context) {

@@ -1,0 +1,70 @@
+stages:
+  - build
+  - test 
+  - analysis
+
+.ci-script-before: &ci-script-before
+    # Auth to pull/push images
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > ~/.docker/config.json
+    # Set image tag name
+    - if [[ -z "$CI_COMMIT_TAG" ]]; then CI_APPLICATION_TAG=${CI_APPLICATION_TAG:-ci-$CI_COMMIT_SHORT_SHA}; else CI_APPLICATION_TAG=${CI_APPLICATION_TAG:-$CI_COMMIT_TAG}; fi
+
+build:binary:
+  stage: build
+  image: golang:1.19-bullseye
+  before_script:
+    - go install
+  script:
+    - go build -o $CI_PROJECT_DIR/alertgo
+  artifacts:
+    paths:
+      - docs
+      - alertgo
+      - db
+      - grafana-dashboards
+  rules:
+    - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "merge_request_event"))
+    - if: ($CI_COMMIT_BRANCH || $CI_COMMIT_TAG)
+
+build:images:
+  stage: build
+  image: registry.gbox.pl/library/buildtools:slim
+  before_script:
+    - *ci-script-before
+    - sed -i 's/ENVIRONMENT=development/ENVIRONMENT=ci/g' .env 
+  script:
+    - devspace build -t $CI_APPLICATION_TAG
+  tags:
+    - kubernetes
+  rules:
+    - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "merge_request_event"))
+    - if: ($CI_COMMIT_BRANCH || $CI_COMMIT_TAG)
+
+test:unit:
+  image: golang:1.19-bullseye
+  stage: test
+  before_script:
+    - go install
+  script:
+    - go test "./..." -coverprofile="test-coverage.out" -covermode=count -json > test-report.json;
+    - go get github.com/boumenot/gocover-cobertura
+    - go run github.com/boumenot/gocover-cobertura < test-coverage.out > test-coverage.xml
+  artifacts:
+    paths:
+      - test-coverage.out
+      - test-coverage.xml
+      - test-report.json
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: test-coverage.xml
+  rules:
+    - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "merge_request_event"))
+    - if: ($CI_COMMIT_BRANCH || $CI_COMMIT_TAG)
+
+variables:
+  SONAR_EXCLUSIONS: '**/*_test.go,internal/metrics/collector.go'
+
+include:
+  - remote: https://git.gbox.pl/gbox-public/gitlab-ci-template/-/raw/master/go/sonarqube-template.yml

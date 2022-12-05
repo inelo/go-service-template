@@ -1,0 +1,42 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "GoServiceTemplate",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "tags": [
+          "ping"
+        ],
+        "summary": "Respond when service is alive",
+        "description": "Respond with pong if everything works fine",
+        "responses": {
+          "200": {
+            "description": "A list of alert dispatches (can be an empty list)"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Respond with prometheus metrics",
+        "description": "Respond with prometheus metrics",
+        "responses": {
+          "200": {
+            "description": "A list of metrics collected by service"
+          }
+        }
+      }
+    }
+  }
+}

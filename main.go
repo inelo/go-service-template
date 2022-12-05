@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/Shopify/sarama"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/mongodb"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"go-service-template/internal/app"
 	"go-service-template/internal/common/log"
 	"go-service-template/internal/config"
@@ -38,33 +40,40 @@ func init() {
 func main() {
 	defer logger.Sync()
 
-	keepRunning := true
+	// OPTIONAL SECTION - REMOVE MIGRATIONS IF NOT NEEDED
+	if conf.DbUri != "" {
+		fmt.Println("Run migrations...")
 
-	consumerConf := sarama.NewConfig()
+		m, err := migrate.New(
+			"file://db/migrations",
+			conf.DbUri)
 
-	consumerConf.Consumer.Offsets.Initial = sarama.OffsetOldest
-	consumerConf.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-	consumerConf.Net.SASL.Enable = true
-	consumerConf.Net.SASL.User = conf.KafkaUser
-	consumerConf.Net.SASL.Password = conf.KafkaPassword
+		if err != nil {
+			panic(err)
+		}
+
+		m.Up()
+
+		version, _, _ := m.Version()
+		fmt.Println("Current migration version:", version)
+	}
+
+	// END OF MIGRATIONS SECTION
 
 	appInst := app.NewApplication(conf, logger)
+	server := server.StartHttp(conf, logger, &appInst)
 
-	ctx := context.TODO()
-
-	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-
-	server.StartHttp(conf, logger, &appInst)
-
-	for keepRunning {
-		select {
-		case <-ctx.Done():
-			logger.Sugar().Info("terminating: context cancelled")
-			keepRunning = false
-		case <-sigterm:
-			logger.Sugar().Info("terminating: via signal")
-			keepRunning = false
+	idleConnectionsClosed := make(chan struct{})
+	go func() {
+		sigterm := make(chan os.Signal, 1)
+		signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+		<-sigterm
+		if err := server.Shutdown(context.Background()); err != nil {
+			logger.Sugar().Infof("HTTP Server Shutdown Error: %v", err)
 		}
-	}
+		close(idleConnectionsClosed)
+	}()
+
+	<-idleConnectionsClosed
+	logger.Sugar().Info("HTTP Server Shutdown")
 }

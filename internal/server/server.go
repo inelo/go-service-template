@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func StartHttp(config config.Config, logger *zap.Logger, application *app.Application) {
+func StartHttp(config config.Config, logger *zap.Logger, application *app.Application) *http.Server {
 	router := gin.New()
 
 	// Middlewares
@@ -31,10 +31,12 @@ func StartHttp(config config.Config, logger *zap.Logger, application *app.Applic
 	go func() {
 		if err := s.ListenAndServe(); err != nil {
 			if err == http.ErrServerClosed {
-				fmt.Println("http: web server shutdown complete")
+				logger.Info("http: web server shutdown complete")
 			} else {
-				fmt.Printf("http: web server closed unexpect: %s", err)
+				logger.Sugar().Errorf("http: web server closed unexpect: %s", err)
 			}
 		}
 	}()
+
+	return s
 }
